@@ -168,7 +168,7 @@ function clearFocus() {
   refresh();
 }
 
-document.getElementById('clear-focus-btn').addEventListener('click', clearFocus);
+document.getElementById('focus-banner').addEventListener('click', clearFocus);
 
 function showStopOnMap(stop) {
   if (stopMarker) map.removeLayer(stopMarker);

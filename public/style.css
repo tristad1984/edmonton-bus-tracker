@@ -229,7 +229,7 @@ html, body {
 
 #topbar {
   position: absolute;
-  top: 12px;
+  top: calc(env(safe-area-inset-top) + 12px);
   left: 12px;
   z-index: 1000;
   background: rgba(20, 20, 24, 0.85);
@@ -341,8 +341,9 @@ html, body {
 
 #focus-banner {
   position: absolute;
-  top: 12px;
+  top: calc(env(safe-area-inset-top) + 12px);
   right: 12px;
+  cursor: pointer;
   z-index: 1000;
   background: rgba(26, 115, 232, 0.92);
   color: #fff;
