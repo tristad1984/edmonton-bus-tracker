@@ -12,6 +12,9 @@
   const subscribeStatus = document.getElementById('subscribe-status');
   const watchListEl = document.getElementById('watch-list');
   const viewOnMapBtn = document.getElementById('view-on-map-btn');
+  const destinationSearchEl = document.getElementById('destination-search');
+  const findRouteBtn = document.getElementById('find-route-btn');
+  const tripSuggestionsEl = document.getElementById('trip-suggestions');
 
   let selectedStop = null; // { stopId, name, lat, lon }
   let selectedRouteId = null; // null = any route at this stop
@@ -93,6 +96,82 @@
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
+  });
+
+  function getCurrentPositionAsync() {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error('Geolocation isn\'t available in this browser.'));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      });
+    });
+  }
+
+  findRouteBtn.addEventListener('click', async () => {
+    const destText = destinationSearchEl.value.trim();
+    if (!destText) return;
+    findRouteBtn.disabled = true;
+    findRouteBtn.textContent = 'Finding your route…';
+    tripSuggestionsEl.innerHTML = '';
+    try {
+      const pos = await getCurrentPositionAsync().catch((err) => {
+        throw new Error(
+          err.code === err.PERMISSION_DENIED
+            ? 'Location permission denied — turn it on to use "Where to?".'
+            : 'Could not get your location.'
+        );
+      });
+      const { latitude, longitude } = pos.coords;
+
+      const geoRes = await fetch(`/api/geocode?q=${encodeURIComponent(destText)}`);
+      const geoData = await geoRes.json();
+      if (!geoData.results || !geoData.results.length) {
+        tripSuggestionsEl.innerHTML = '<div class="muted">Couldn\'t find that place. Try a more specific address.</div>';
+        return;
+      }
+      const dest = geoData.results[0];
+
+      const tripRes = await fetch(
+        `/api/trip-suggestions?fromLat=${latitude}&fromLon=${longitude}&toLat=${dest.lat}&toLon=${dest.lon}`
+      );
+      const tripData = await tripRes.json();
+
+      if (!tripData.suggestions || !tripData.suggestions.length) {
+        const gmapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${dest.lat},${dest.lon}&travelmode=transit`;
+        tripSuggestionsEl.innerHTML = `
+          <div class="muted">
+            No direct (no-transfer) route found to "${escapeHtml(dest.label)}" from your location.
+            You may need a transfer — try <a href="${gmapsUrl}" target="_blank" rel="noopener">Google Maps transit directions</a>.
+          </div>`;
+        return;
+      }
+
+      tripSuggestionsEl.innerHTML = `<div class="muted">Routes to "${escapeHtml(dest.label)}":</div>`;
+      for (const s of tripData.suggestions) {
+        const row = document.createElement('div');
+        row.className = 'result-item';
+        row.innerHTML = `
+          <div class="route-chip" style="background:${s.routeColor}">${escapeHtml(s.routeShortName)}</div>
+          <div class="item-main">
+            ${escapeHtml(s.headsign)}
+            <div class="item-sub">Board at ${escapeHtml(s.boardStop.name)} (${formatDistance(s.boardStop.distanceM)}) · get off near ${escapeHtml(s.alightStop.name)} (${formatDistance(s.alightStop.distanceM)} from destination)</div>
+          </div>
+          <div class="eta">${formatEta(s.etaMinutes)}</div>
+        `;
+        row.addEventListener('click', () => selectStop(s.boardStop.stopId, s.boardStop.name, s.routeId));
+        tripSuggestionsEl.appendChild(row);
+      }
+    } catch (err) {
+      tripSuggestionsEl.innerHTML = `<div class="muted">⚠️ ${escapeHtml(err.message)}</div>`;
+    } finally {
+      findRouteBtn.disabled = false;
+      findRouteBtn.textContent = '🧭 Find my route';
+    }
   });
 
   stopSearchEl.addEventListener(

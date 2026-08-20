@@ -168,6 +168,28 @@ function predictionsForStop(stopId, limit = 8) {
   });
 }
 
+function nearestStops(lat, lon, limit = 6, maxDistanceM = 900) {
+  const results = [];
+  for (const stop of state.stops.values()) {
+    const distanceM = haversineMeters(lat, lon, stop.lat, stop.lon);
+    if (distanceM <= maxDistanceM) results.push({ stop, distanceM });
+  }
+  results.sort((a, b) => a.distanceM - b.distanceM);
+  return results.slice(0, limit);
+}
+
+// routeId -> soonest upcoming trip-update record at this stop
+function routesServingStop(stopId) {
+  const records = state.tripUpdatesByStop.get(stopId) || [];
+  const byRoute = new Map();
+  for (const r of records) {
+    if (!r.routeId) continue;
+    const existing = byRoute.get(r.routeId);
+    if (!existing || r.arrivalTime < existing.arrivalTime) byRoute.set(r.routeId, r);
+  }
+  return byRoute;
+}
+
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -218,6 +240,72 @@ app.get('/api/stops/search', (req, res) => {
     }
   }
   res.json({ stops: results });
+});
+
+const EDMONTON_VIEWBOX = '-113.80,53.70,-113.20,53.30'; // left,top,right,bottom
+
+app.get('/api/geocode', async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (!q) return res.json({ results: [] });
+  try {
+    const url = new URL('https://nominatim.openstreetmap.org/search');
+    url.searchParams.set('format', 'json');
+    url.searchParams.set('q', q);
+    url.searchParams.set('viewbox', EDMONTON_VIEWBOX);
+    url.searchParams.set('bounded', '1');
+    url.searchParams.set('limit', '5');
+    const geoRes = await fetch(url, {
+      headers: { 'User-Agent': `edmonton-bus-tracker/1.0 (${process.env.VAPID_SUBJECT || 'contact via github'})` },
+    });
+    if (!geoRes.ok) throw new Error(`geocode HTTP ${geoRes.status}`);
+    const rows = await geoRes.json();
+    res.json({ results: rows.map((row) => ({ label: row.display_name, lat: Number(row.lat), lon: Number(row.lon) })) });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.get('/api/trip-suggestions', (req, res) => {
+  const fromLat = Number(req.query.fromLat);
+  const fromLon = Number(req.query.fromLon);
+  const toLat = Number(req.query.toLat);
+  const toLon = Number(req.query.toLon);
+  if ([fromLat, fromLon, toLat, toLon].some(Number.isNaN)) {
+    return res.status(400).json({ error: 'fromLat, fromLon, toLat, toLon are required' });
+  }
+
+  const originStops = nearestStops(fromLat, fromLon);
+  const destStops = nearestStops(toLat, toLon);
+  const nowSec = Date.now() / 1000;
+  const bestByKey = new Map(); // `${routeId}|${headsign}` -> suggestion
+
+  for (const { stop: originStop, distanceM: originDistanceM } of originStops) {
+    const originRoutes = routesServingStop(originStop.stopId);
+    for (const { stop: destStop, distanceM: destDistanceM } of destStops) {
+      if (originStop.stopId === destStop.stopId) continue;
+      const destRoutes = routesServingStop(destStop.stopId);
+      for (const [routeId, originRecord] of originRoutes) {
+        if (!destRoutes.has(routeId)) continue;
+        const route = state.routes[routeId];
+        const etaMinutes = Math.round((originRecord.arrivalTime - nowSec) / 60);
+        const key = `${routeId}|${originRecord.headsign}`;
+        const existing = bestByKey.get(key);
+        if (existing && existing.etaMinutes <= etaMinutes) continue;
+        bestByKey.set(key, {
+          routeId,
+          routeShortName: route?.shortName || routeId,
+          routeColor: route?.color || '#0066cc',
+          headsign: originRecord.headsign,
+          boardStop: { stopId: originStop.stopId, name: originStop.name, distanceM: Math.round(originDistanceM) },
+          alightStop: { stopId: destStop.stopId, name: destStop.name, distanceM: Math.round(destDistanceM) },
+          etaMinutes,
+        });
+      }
+    }
+  }
+
+  const suggestions = Array.from(bestByKey.values()).sort((a, b) => a.etaMinutes - b.etaMinutes).slice(0, 8);
+  res.json({ suggestions });
 });
 
 app.get('/api/stops/:stopId/predictions', (req, res) => {
@@ -307,8 +395,20 @@ app.delete('/api/watches/:id', (req, res) => {
   res.json({ ok: removed });
 });
 
+async function withStartupRetry(fn, label, retries = 3, delayMs = 3000) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    await fn();
+    if (attempt < retries && Object.keys(state.routes).length === 0 && label === 'routes') {
+      console.warn(`[${label}] attempt ${attempt} left state empty, retrying in ${delayMs}ms…`);
+      await new Promise((r) => setTimeout(r, delayMs));
+      continue;
+    }
+    return;
+  }
+}
+
 async function start() {
-  await refreshRoutes();
+  await withStartupRetry(refreshRoutes, 'routes');
   await refreshGtfsStatic();
   await refreshVehicles();
   await refreshTripUpdates();

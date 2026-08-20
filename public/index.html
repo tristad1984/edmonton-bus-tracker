@@ -33,6 +33,15 @@
       <p class="muted">Get a phone notification before your bus arrives, so you don't have to wait outside.</p>
 
       <section class="card">
+        <h2>Where to?</h2>
+        <div class="search-row">
+          <input id="destination-search" type="text" placeholder="Type a destination…" />
+        </div>
+        <button id="find-route-btn" class="btn primary">🧭 Find my route</button>
+        <div id="trip-suggestions" class="result-list"></div>
+      </section>
+
+      <section class="card">
         <h2>Find a stop</h2>
         <button id="locate-btn" class="btn">📍 Use my location</button>
         <div class="search-row">
