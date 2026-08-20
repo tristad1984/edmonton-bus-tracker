@@ -155,11 +155,12 @@
       for (const s of tripData.suggestions) {
         const row = document.createElement('div');
         row.className = 'result-item';
+        const lrtTag = s.scheduled ? '🚊 ' : '';
         row.innerHTML = `
           <div class="route-chip" style="background:${s.routeColor}">${escapeHtml(s.routeShortName)}</div>
           <div class="item-main">
-            ${escapeHtml(s.headsign)}
-            <div class="item-sub">Board at ${escapeHtml(s.boardStop.name)} (${formatDistance(s.boardStop.distanceM)}) · get off near ${escapeHtml(s.alightStop.name)} (${formatDistance(s.alightStop.distanceM)} from destination)</div>
+            ${lrtTag}${escapeHtml(s.headsign)}
+            <div class="item-sub">Board at ${escapeHtml(s.boardStop.name)} (${formatDistance(s.boardStop.distanceM)}) · get off near ${escapeHtml(s.alightStop.name)} (${formatDistance(s.alightStop.distanceM)} from destination)${s.scheduled ? ' · scheduled time' : ''}</div>
           </div>
           <div class="eta">${formatEta(s.etaMinutes)}</div>
         `;
@@ -237,19 +238,24 @@
       for (const p of predictions) {
         const row = document.createElement('div');
         row.className = 'result-item';
+        const subLabel = p.scheduled
+          ? '🚊 LRT — scheduled time, not live-tracked'
+          : 'Tap to track this bus on the map';
         row.innerHTML = `
           <div class="route-chip" style="background:${p.routeColor}">${escapeHtml(p.routeShortName)}</div>
           <div class="item-main">
             ${escapeHtml(p.headsign || '')}
-            <div class="item-sub">Tap to track this bus on the map</div>
+            <div class="item-sub">${subLabel}</div>
           </div>
           <div class="eta">${formatEta(p.etaMinutes)}</div>
         `;
-        row.addEventListener('click', () => {
-          document.querySelector('.tab-btn[data-view="map-view"]').click();
-          const label = `Route ${p.routeShortName}`;
-          setTimeout(() => focusOnTrip(p.tripId, selectedStop, label), 100);
-        });
+        if (!p.scheduled) {
+          row.addEventListener('click', () => {
+            document.querySelector('.tab-btn[data-view="map-view"]').click();
+            const label = `Route ${p.routeShortName}`;
+            setTimeout(() => focusOnTrip(p.tripId, selectedStop, label), 100);
+          });
+        }
         predictionsList.appendChild(row);
       }
     }

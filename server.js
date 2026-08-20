@@ -6,6 +6,7 @@ import GtfsRealtimeBindings from 'gtfs-realtime-bindings';
 import { toNumber, haversineMeters } from './utils.js';
 import { loadGtfsStatic } from './gtfsStatic.js';
 import { fetchTripUpdates } from './tripUpdates.js';
+import { lrtPredictionsForStop } from './lrtSchedule.js';
 import {
   vapidEnabled,
   getVapidPublicKey,
@@ -34,6 +35,9 @@ const state = {
   routesUpdatedAt: null,
   stops: new Map(),
   trips: new Map(),
+  calendar: new Map(),
+  calendarExceptions: new Map(),
+  lrtStopTimesByStop: new Map(),
   staticUpdatedAt: null,
   tripUpdatesByStop: new Map(),
   tripUpdatesByTrip: new Map(),
@@ -74,11 +78,14 @@ async function refreshRoutes() {
 
 async function refreshGtfsStatic() {
   try {
-    const { stops, trips } = await loadGtfsStatic();
+    const { stops, trips, calendar, calendarExceptions, lrtStopTimesByStop } = await loadGtfsStatic();
     state.stops = stops;
     state.trips = trips;
+    state.calendar = calendar;
+    state.calendarExceptions = calendarExceptions;
+    state.lrtStopTimesByStop = lrtStopTimesByStop;
     state.staticUpdatedAt = new Date().toISOString();
-    console.log(`[static] loaded ${stops.size} stops, ${trips.size} trips`);
+    console.log(`[static] loaded ${stops.size} stops, ${trips.size} trips, ${lrtStopTimesByStop.size} LRT-served stops`);
   } catch (err) {
     console.error('[static] refresh failed:', err.message);
   }
@@ -129,9 +136,26 @@ async function refreshVehicles() {
   }
 }
 
+function mergeLrtIntoByStop(byStop) {
+  const lrtCtx = {
+    trips: state.trips,
+    calendar: state.calendar,
+    calendarExceptions: state.calendarExceptions,
+    lrtStopTimesByStop: state.lrtStopTimesByStop,
+  };
+  for (const stopId of state.lrtStopTimesByStop.keys()) {
+    const lrtRecords = lrtPredictionsForStop(stopId, lrtCtx);
+    if (!lrtRecords.length) continue;
+    const merged = (byStop.get(stopId) || []).concat(lrtRecords);
+    merged.sort((a, b) => a.arrivalTime - b.arrivalTime);
+    byStop.set(stopId, merged);
+  }
+}
+
 async function refreshTripUpdates() {
   try {
     const { byStop, byTrip, updatedAt } = await fetchTripUpdates(state.trips);
+    mergeLrtIntoByStop(byStop);
     state.tripUpdatesByStop = byStop;
     state.tripUpdatesByTrip = byTrip;
     state.tripUpdatesUpdatedAt = updatedAt;
@@ -164,6 +188,7 @@ function predictionsForStop(stopId, limit = 8) {
       headsign: r.headsign,
       arrivalTime: r.arrivalTime,
       etaMinutes: Math.round((r.arrivalTime - nowSec) / 60),
+      scheduled: r.scheduled || false,
     };
   });
 }
@@ -274,8 +299,12 @@ app.get('/api/trip-suggestions', (req, res) => {
     return res.status(400).json({ error: 'fromLat, fromLon, toLat, toLon are required' });
   }
 
-  const originStops = nearestStops(fromLat, fromLon);
-  const destStops = nearestStops(toLat, toLon);
+  // Wider than the default nearby-stop limit: LRT stations have two
+  // platform-level stops a few meters apart (one per direction), and a
+  // tight cutoff can end up including only one side of the station —
+  // silently hiding the correct-direction option.
+  const originStops = nearestStops(fromLat, fromLon, 12);
+  const destStops = nearestStops(toLat, toLon, 12);
   const nowSec = Date.now() / 1000;
   const bestByKey = new Map(); // `${routeId}|${headsign}` -> suggestion
 
@@ -299,6 +328,7 @@ app.get('/api/trip-suggestions', (req, res) => {
           boardStop: { stopId: originStop.stopId, name: originStop.name, distanceM: Math.round(originDistanceM) },
           alightStop: { stopId: destStop.stopId, name: destStop.name, distanceM: Math.round(destDistanceM) },
           etaMinutes,
+          scheduled: originRecord.scheduled || false,
         });
       }
     }
