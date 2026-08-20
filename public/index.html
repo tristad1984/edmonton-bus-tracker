@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Edmonton Transit Live Map</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#1a73e8" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ETS Live" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="map-view" class="view">
+    <div id="map"></div>
+    <div id="topbar">
+      <div id="title">🚍 Edmonton Transit — Live</div>
+      <div id="status">connecting…</div>
+    </div>
+  </div>
+
+  <div id="alerts-view" class="view hidden">
+    <div id="alerts-scroll">
+      <h1>Bus Alerts</h1>
+      <p class="muted">Get a phone notification before your bus arrives, so you don't have to wait outside.</p>
+
+      <section class="card">
+        <h2>Find a stop</h2>
+        <button id="locate-btn" class="btn">📍 Use my location</button>
+        <div class="search-row">
+          <input id="stop-search" type="text" placeholder="Search stop name or number…" />
+        </div>
+        <div class="search-row">
+          <input id="route-search" type="text" placeholder="Or search by route number…" />
+        </div>
+        <div id="stop-results" class="result-list"></div>
+      </section>
+
+      <section id="predictions-card" class="card hidden">
+        <h2 id="predictions-stop-name">Stop</h2>
+        <div id="predictions-list" class="result-list"></div>
+        <div id="watch-form" class="hidden">
+          <label for="threshold-select">Alert me when the bus is:</label>
+          <select id="threshold-select">
+            <option value="4">4 minutes away</option>
+            <option value="5" selected>5 minutes away</option>
+            <option value="7">7 minutes away</option>
+            <option value="10">10 minutes away</option>
+            <option value="15">15 minutes away</option>
+          </select>
+          <button id="subscribe-btn" class="btn primary">🔔 Set alert</button>
+          <div id="subscribe-status" class="muted"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>My Alerts</h2>
+        <div id="watch-list" class="result-list">
+          <div class="muted">No active alerts yet.</div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <nav id="tabbar">
+    <button class="tab-btn active" data-view="map-view">🗺️ Map</button>
+    <button class="tab-btn" data-view="alerts-view">🔔 Alerts</button>
+  </nav>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+  <script src="alerts.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

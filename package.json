@@ -1,0 +1,22 @@
+{
+  "name": "edmonton-bus-tracker",
+  "version": "1.0.0",
+  "description": "Live map of Edmonton Transit (ETS) buses, powered by the city's GTFS-realtime feed",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "adm-zip": "^0.6.0",
+    "csv-parse": "^5.5.6",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "gtfs-realtime-bindings": "^1.1.1",
+    "web-push": "^3.6.7"
+  }
+}
