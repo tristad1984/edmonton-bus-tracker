@@ -63,12 +63,15 @@ function popupHtml(vehicle) {
     </div>`;
 }
 
+let focusedTripId = null; // when set, only this trip's bus is shown
+
 async function refresh() {
   try {
     const res = await fetch('/api/vehicles');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    const vehicles = data.vehicles || [];
+    const allVehicles = data.vehicles || [];
+    const vehicles = focusedTripId ? allVehicles.filter((v) => v.tripId === focusedTripId) : allVehicles;
     const seen = new Set();
 
     for (const v of vehicles) {
@@ -83,6 +86,7 @@ async function refresh() {
         const marker = L.marker([v.lat, v.lon], { icon: makeIcon(v) }).addTo(map);
         marker.bindPopup(popupHtml(v));
         markers.set(v.id, marker);
+        if (focusedTripId) marker.openPopup();
       }
     }
 
@@ -94,9 +98,15 @@ async function refresh() {
     }
 
     const time = data.updatedAt ? new Date(data.updatedAt).toLocaleTimeString() : '—';
-    statusEl.textContent = data.error
-      ? `${vehicles.length} buses · feed error: ${data.error}`
-      : `${vehicles.length} buses · updated ${time}`;
+    if (data.error) {
+      statusEl.textContent = `${allVehicles.length} buses · feed error: ${data.error}`;
+    } else if (focusedTripId) {
+      statusEl.textContent = vehicles.length
+        ? `Tracking your bus · updated ${time}`
+        : `Waiting for this bus's GPS… · updated ${time}`;
+    } else {
+      statusEl.textContent = `${allVehicles.length} buses · updated ${time}`;
+    }
   } catch (err) {
     statusEl.textContent = `connection error: ${err.message}`;
   }
@@ -106,6 +116,59 @@ refresh();
 setInterval(refresh, POLL_MS);
 
 let stopMarker = null;
+let userLocationMarker = null;
+let geoWatchId = null;
+
+function startWatchingUserLocation() {
+  if (!navigator.geolocation || geoWatchId != null) return;
+  geoWatchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      const { latitude, longitude } = pos.coords;
+      const icon = L.divIcon({
+        html: '<div class="my-location-dot"></div>',
+        className: '',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
+      });
+      if (userLocationMarker) {
+        userLocationMarker.setLatLng([latitude, longitude]);
+      } else {
+        userLocationMarker = L.marker([latitude, longitude], { icon, zIndexOffset: 3000 }).addTo(map);
+      }
+    },
+    (err) => console.warn('geolocation watch failed:', err.message),
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+  );
+}
+
+function stopWatchingUserLocation() {
+  if (geoWatchId != null) {
+    navigator.geolocation.clearWatch(geoWatchId);
+    geoWatchId = null;
+  }
+  if (userLocationMarker) {
+    map.removeLayer(userLocationMarker);
+    userLocationMarker = null;
+  }
+}
+
+function focusOnTrip(tripId, stop, label) {
+  focusedTripId = tripId;
+  showStopOnMap(stop);
+  startWatchingUserLocation();
+  document.getElementById('focus-label').textContent = `🎯 Tracking ${label || 'your bus'}`;
+  document.getElementById('focus-banner').classList.remove('hidden');
+  refresh();
+}
+
+function clearFocus() {
+  focusedTripId = null;
+  stopWatchingUserLocation();
+  document.getElementById('focus-banner').classList.add('hidden');
+  refresh();
+}
+
+document.getElementById('clear-focus-btn').addEventListener('click', clearFocus);
 
 function showStopOnMap(stop) {
   if (stopMarker) map.removeLayer(stopMarker);

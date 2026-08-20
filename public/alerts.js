@@ -157,12 +157,20 @@
       predictionsList.innerHTML = '';
       for (const p of predictions) {
         const row = document.createElement('div');
-        row.className = 'result-item watch-row';
+        row.className = 'result-item';
         row.innerHTML = `
           <div class="route-chip" style="background:${p.routeColor}">${escapeHtml(p.routeShortName)}</div>
-          <div class="item-main">${escapeHtml(p.headsign || '')}</div>
+          <div class="item-main">
+            ${escapeHtml(p.headsign || '')}
+            <div class="item-sub">Tap to track this bus on the map</div>
+          </div>
           <div class="eta">${formatEta(p.etaMinutes)}</div>
         `;
+        row.addEventListener('click', () => {
+          document.querySelector('.tab-btn[data-view="map-view"]').click();
+          const label = `Route ${p.routeShortName}`;
+          setTimeout(() => focusOnTrip(p.tripId, selectedStop, label), 100);
+        });
         predictionsList.appendChild(row);
       }
     }
@@ -174,7 +182,10 @@
     if (!selectedStop || typeof selectedStop.lat !== 'number') return;
     // switch tabs first so the map container is visible/sized before we set its view
     document.querySelector('.tab-btn[data-view="map-view"]').click();
-    setTimeout(() => showStopOnMap(selectedStop), 100);
+    setTimeout(() => {
+      clearFocus(); // in case a previous single-bus focus was active
+      showStopOnMap(selectedStop);
+    }, 100);
   });
 
   subscribeBtn.addEventListener('click', async () => {

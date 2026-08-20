@@ -308,3 +308,60 @@ html, body {
   transform: rotate(-45deg);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
 }
+
+.my-location-dot {
+  width: 16px;
+  height: 16px;
+  position: relative;
+}
+
+.my-location-dot::before {
+  content: '';
+  position: absolute;
+  inset: -10px;
+  border-radius: 50%;
+  background: rgba(26, 115, 232, 0.35);
+  animation: my-location-pulse 2s ease-out infinite;
+}
+
+.my-location-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: #1a73e8;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes my-location-pulse {
+  0% { transform: scale(0.4); opacity: 0.9; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+#focus-banner {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1000;
+  background: rgba(26, 115, 232, 0.92);
+  color: #fff;
+  padding: 10px 12px;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+#clear-focus-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: #fff;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
