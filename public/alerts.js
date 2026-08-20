@@ -11,8 +11,9 @@
   const subscribeBtn = document.getElementById('subscribe-btn');
   const subscribeStatus = document.getElementById('subscribe-status');
   const watchListEl = document.getElementById('watch-list');
+  const viewOnMapBtn = document.getElementById('view-on-map-btn');
 
-  let selectedStop = null; // { stopId, name }
+  let selectedStop = null; // { stopId, name, lat, lon }
   let selectedRouteId = null; // null = any route at this stop
 
   function debounce(fn, ms) {
@@ -146,6 +147,8 @@
 
     const res = await fetch(`/api/stops/${encodeURIComponent(stopId)}/predictions`);
     const data = await res.json();
+    selectedStop.lat = data.stop.lat;
+    selectedStop.lon = data.stop.lon;
     const predictions = routeIdHint ? data.predictions.filter((p) => p.routeId === routeIdHint) : data.predictions;
 
     if (!predictions.length) {
@@ -166,6 +169,13 @@
     watchForm.classList.remove('hidden');
     predictionsCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
+
+  viewOnMapBtn.addEventListener('click', () => {
+    if (!selectedStop || typeof selectedStop.lat !== 'number') return;
+    // switch tabs first so the map container is visible/sized before we set its view
+    document.querySelector('.tab-btn[data-view="map-view"]').click();
+    setTimeout(() => showStopOnMap(selectedStop), 100);
+  });
 
   subscribeBtn.addEventListener('click', async () => {
     if (!selectedStop) return;

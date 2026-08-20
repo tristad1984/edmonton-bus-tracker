@@ -104,3 +104,18 @@ async function refresh() {
 
 refresh();
 setInterval(refresh, POLL_MS);
+
+let stopMarker = null;
+
+function showStopOnMap(stop) {
+  if (stopMarker) map.removeLayer(stopMarker);
+  const icon = L.divIcon({
+    html: '<div class="stop-pin"></div>',
+    className: '',
+    iconSize: [22, 30],
+    iconAnchor: [11, 30],
+  });
+  stopMarker = L.marker([stop.lat, stop.lon], { icon, zIndexOffset: 2000 }).addTo(map);
+  stopMarker.bindPopup(`<b>${escapeHtml(stop.name)}</b>`).openPopup();
+  map.setView([stop.lat, stop.lon], 16);
+}
