@@ -1,5 +1,6 @@
 import AdmZip from 'adm-zip';
 import { parse } from 'csv-parse/sync';
+import { parse as parseStream } from 'csv-parse';
 
 const GTFS_ZIP_URL = 'https://gtfs.edmonton.ca/TMGTFSRealTimeWebService/GTFS/gtfs.zip';
 
@@ -15,6 +16,24 @@ function readCsv(zip, filename) {
   if (!entry) throw new Error(`${filename} not found in GTFS zip`);
   const text = entry.getData().toString('utf8').replace(/^﻿/, '');
   return parse(text, { columns: true, skip_empty_lines: true, trim: true });
+}
+
+// stop_times.txt can be well over a million rows for a full transit network
+// (Edmonton's OOM-killed the app on Render's 512MB free tier when it was
+// parsed with the sync parser, which materializes every row as a JS object
+// before any filtering happens). This streams row-by-row and only keeps the
+// ones matching `keep`, so peak memory is one row plus the filtered subset —
+// not the whole file.
+async function readCsvFiltered(zip, filename, keep) {
+  const entry = zip.getEntry(filename);
+  if (!entry) throw new Error(`${filename} not found in GTFS zip`);
+  const text = entry.getData().toString('utf8').replace(/^﻿/, '');
+  const parser = parseStream(text, { columns: true, skip_empty_lines: true, trim: true });
+  const results = [];
+  for await (const record of parser) {
+    if (keep(record)) results.push(record);
+  }
+  return results;
 }
 
 function parseTimeToSeconds(hms) {
@@ -92,8 +111,8 @@ export async function loadGtfsStatic() {
 
   const lrtStopTimesByStop = new Map(); // stopId -> [{ tripId, arrivalSec, departureSec }]
   try {
-    for (const row of readCsv(zip, 'stop_times.txt')) {
-      if (!lrtTripIds.has(row.trip_id)) continue;
+    const lrtRows = await readCsvFiltered(zip, 'stop_times.txt', (row) => lrtTripIds.has(row.trip_id));
+    for (const row of lrtRows) {
       const arrivalSec = parseTimeToSeconds(row.arrival_time);
       const departureSec = parseTimeToSeconds(row.departure_time || row.arrival_time);
       if (arrivalSec == null || !row.stop_id) continue;
