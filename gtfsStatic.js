@@ -1,4 +1,5 @@
 import AdmZip from 'adm-zip';
+import unzipper from 'unzipper';
 import { parse } from 'csv-parse/sync';
 import { parse as parseStream } from 'csv-parse';
 
@@ -18,18 +19,21 @@ function readCsv(zip, filename) {
   return parse(text, { columns: true, skip_empty_lines: true, trim: true });
 }
 
-// stop_times.txt can be well over a million rows for a full transit network
-// (Edmonton's OOM-killed the app on Render's 512MB free tier when it was
-// parsed with the sync parser, which materializes every row as a JS object
-// before any filtering happens). This streams row-by-row and only keeps the
-// ones matching `keep`, so peak memory is one row plus the filtered subset —
-// not the whole file.
-async function readCsvFiltered(zip, filename, keep) {
-  const entry = zip.getEntry(filename);
+// stop_times.txt is ~200MB uncompressed for Edmonton's full network. adm-zip
+// only offers whole-buffer decompression (getData()), which — combined with
+// the UTF-8→UTF-16 string conversion JS does under the hood — was enough to
+// OOM-kill the app on Render's 512MB free tier well before any row filtering
+// ever got a chance to run. unzipper's per-entry .stream() actually
+// decompresses incrementally, so piping it straight into the CSV stream
+// parser means we only ever hold one chunk plus the small filtered (LRT-only)
+// result set in memory — never the whole file.
+async function readCsvFilteredStreaming(buffer, filename, keep) {
+  const directory = await unzipper.Open.buffer(buffer);
+  const entry = directory.files.find((f) => f.path === filename);
   if (!entry) throw new Error(`${filename} not found in GTFS zip`);
-  const text = entry.getData().toString('utf8').replace(/^﻿/, '');
-  const parser = parseStream(text, { columns: true, skip_empty_lines: true, trim: true });
+
   const results = [];
+  const parser = entry.stream().pipe(parseStream({ columns: true, skip_empty_lines: true, trim: true }));
   for await (const record of parser) {
     if (keep(record)) results.push(record);
   }
@@ -111,7 +115,7 @@ export async function loadGtfsStatic() {
 
   const lrtStopTimesByStop = new Map(); // stopId -> [{ tripId, arrivalSec, departureSec }]
   try {
-    const lrtRows = await readCsvFiltered(zip, 'stop_times.txt', (row) => lrtTripIds.has(row.trip_id));
+    const lrtRows = await readCsvFilteredStreaming(buffer, 'stop_times.txt', (row) => lrtTripIds.has(row.trip_id));
     for (const row of lrtRows) {
       const arrivalSec = parseTimeToSeconds(row.arrival_time);
       const departureSec = parseTimeToSeconds(row.departure_time || row.arrival_time);
